@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const API_URL = 'http://localhost:8000/api/qr/'
+const API_URL = '/api/qr/'
 
 function GeneradorQR() {
   const [texto, setTexto] = useState('')

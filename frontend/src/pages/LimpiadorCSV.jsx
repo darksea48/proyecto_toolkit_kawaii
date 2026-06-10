@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 
-const API_URL = 'http://localhost:8000/api/csv/'
+const API_URL = '/api/csv/'
 
 function LimpiadorCSV() {
   const [archivo, setArchivo] = useState(null)
