@@ -94,3 +94,4 @@ proyecto_toolkit-kawaii/
 | POST | `/api/csv/` | Recibe archivo `.csv`, devuelve CSV limpio como descarga |
 
 Para más detalle ver [spec.md](spec.md).
+# toolkitkawai
