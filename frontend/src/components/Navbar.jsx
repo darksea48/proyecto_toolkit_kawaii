@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 function Navbar() {
   return (
     <nav className="navbar navbar-expand-lg navbar-toolkit">
-      <div className="container">
+      <div className="container-fluid">
         <NavLink className="navbar-brand fw-bold d-flex align-items-center gap-2" to="/">
           <i className="bi bi-tools fs-5" aria-hidden="true"></i>
           Toolkit Kawaii
