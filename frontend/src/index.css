@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+@import 'bootstrap-icons/font/bootstrap-icons.css';
+
+/* ── Bootstrap variable overrides ── */
+:root {
+  --bs-primary:          #0D9488;
+  --bs-primary-rgb:      13, 148, 136;
+  --bs-body-font-family: 'Plus Jakarta Sans', sans-serif;
+  --bs-body-bg:          #F0FDFA;
+  --bs-body-color:       #134E4A;
+  --tk-orange:           #F97316;
+}
+
+body {
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  min-height: 100vh;
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  background-color: var(--bs-primary);
+  border-color: var(--bs-primary);
+  color: #fff;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+
+.btn-cta {
+  background-color: var(--tk-orange);
+  border-color: var(--tk-orange);
+  color: #fff;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.btn-cta:hover,
+.btn-cta:focus {
+  background-color: #ea6b0c;
+  border-color: #ea6b0c;
+  color: #fff;
+}
+
+/* ── Tool cards ── */
+.tool-card {
+  border: 2px solid transparent;
+  transition: border-color 180ms ease, transform 180ms ease;
+  cursor: pointer;
+  border-radius: 12px;
+}
+.tool-card:hover {
+  border-color: var(--bs-primary);
+  transform: translateY(-3px);
+}
+
+/* ── Navbar custom ── */
+.navbar-toolkit {
+  background-color: #134E4A;
+}
+.navbar-toolkit .navbar-brand,
+.navbar-toolkit .nav-link {
+  color: #ccfbf1 !important;
+  transition: color 150ms ease;
+}
+.navbar-toolkit .nav-link:hover,
+.navbar-toolkit .nav-link.active {
+  color: #fff !important;
+}
+.navbar-toolkit .nav-link.active {
+  font-weight: 600;
+  border-bottom: 2px solid #2dd4bf;
+}
