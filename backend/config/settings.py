@@ -1,12 +1,26 @@
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-3nzi^07p*nzlpkh3hwu++3ydyp=mgo)sj0!u7svjcn!2m+9*o!'
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-3nzi^07p*nzlpkh3hwu++3ydyp=mgo)sj0!u7svjcn!2m+9*o!',
+)
 
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = [
+    h.strip() for h in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()
+]
+
+# Dokploy/Traefik termina HTTPS y reenvía a Django por HTTP interno.
+# Sin esto, request.is_secure() siempre da False y falla el CSRF en /admin/.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()
+]
 
 
 # Application definition
@@ -28,6 +42,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'config.middleware.UsageLogMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -43,7 +58,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'frontend_dist'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -104,6 +119,17 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+
+# Build de React (frontend/dist), copiado a backend/frontend_dist en el Dockerfile.
+# WhiteNoise sirve estos archivos (JS/CSS/imágenes) directo desde la raíz "/".
+FRONTEND_DIST = BASE_DIR / 'frontend_dist'
+WHITENOISE_ROOT = FRONTEND_DIST if FRONTEND_DIST.exists() else None
 
 # Django REST Framework
 REST_FRAMEWORK = {
@@ -112,8 +138,10 @@ REST_FRAMEWORK = {
     ],
 }
 
-# CORS — permite que React (puerto 5173) llame a Django (puerto 8000)
+# CORS — solo necesario en desarrollo (frontend en puerto 5173 con proxy a Django).
+# En producción, frontend y backend se sirven desde el mismo origen.
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
+    o.strip() for o in os.environ.get(
+        'CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'
+    ).split(',') if o.strip()
 ]
