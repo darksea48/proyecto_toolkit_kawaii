@@ -1,3 +1,4 @@
+import csv
 import io
 import pandas as pd
 from rest_framework.decorators import api_view, parser_classes
@@ -5,6 +6,16 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import HttpResponse
+
+
+def detectar_separador(contenido_bytes, encoding):
+    """Detecta si el CSV usa coma o punto y coma como separador."""
+    muestra = contenido_bytes.decode(encoding, errors='replace')[:4096]
+    try:
+        dialecto = csv.Sniffer().sniff(muestra, delimiters=',;')
+        return dialecto.delimiter
+    except csv.Error:
+        return ';'  # fallback al separador por defecto
 
 
 def limpiar_csv(df):
@@ -71,19 +82,25 @@ def limpiar_csv_view(request):
     try:
         contenido = archivo.read()
 
-        # Intentar leer con UTF-8, si falla probar latin-1
+        # Detectar encoding
         try:
-            df = pd.read_csv(io.BytesIO(contenido), sep=';', dtype=str, engine='python', encoding='utf-8')
+            contenido.decode('utf-8')
+            encoding = 'utf-8'
         except UnicodeDecodeError:
-            df = pd.read_csv(io.BytesIO(contenido), sep=';', dtype=str, engine='python', encoding='latin-1')
+            encoding = 'latin-1'
+
+        # Detectar separador (coma o punto y coma)
+        separador = detectar_separador(contenido, encoding)
+
+        df = pd.read_csv(io.BytesIO(contenido), sep=separador, dtype=str, engine='python', encoding=encoding)
 
         filas_originales = len(df)
         df = limpiar_csv(df)
         filas_limpias = len(df)
 
-        # Generar CSV limpio en memoria
+        # Generar CSV limpio conservando el separador original
         buffer = io.StringIO()
-        df.to_csv(buffer, index=False, sep=';', encoding='utf-8-sig')
+        df.to_csv(buffer, index=False, sep=separador, encoding='utf-8-sig')
         buffer.seek(0)
 
         nombre_salida = archivo.name.replace('.csv', '_LIMPIO.csv')

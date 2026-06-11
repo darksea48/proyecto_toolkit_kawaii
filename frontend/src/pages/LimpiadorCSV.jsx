@@ -94,7 +94,7 @@ function LimpiadorCSV() {
               />
               <div className="form-text">
                 <i className="bi bi-info-circle me-1" aria-hidden="true"></i>
-                Solo archivos .csv — separador esperado: punto y coma (;)
+                Solo archivos .csv; se procesarán las columnas de texto para limpiar los datos.
               </div>
             </div>
             <button
