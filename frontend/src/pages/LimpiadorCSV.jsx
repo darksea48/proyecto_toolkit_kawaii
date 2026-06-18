@@ -1,13 +1,31 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 const API_URL = 'http://localhost:8000/api/csv/'
+const HISTORIAL_URL = 'http://localhost:8000/api/csv/historial/'
+
+function formatFecha(iso) {
+  const d = new Date(iso)
+  return d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+}
 
 function LimpiadorCSV() {
   const [archivo, setArchivo] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [resultado, setResultado] = useState(null)
   const [error, setError] = useState(null)
+  const [historial, setHistorial] = useState([])
   const inputRef = useRef(null)
+
+  const cargarHistorial = useCallback(async () => {
+    try {
+      const res = await fetch(HISTORIAL_URL)
+      if (res.ok) setHistorial(await res.json())
+    } catch {
+      // servidor no disponible — se ignora silenciosamente
+    }
+  }, [])
+
+  useEffect(() => { cargarHistorial() }, [cargarHistorial])
 
   function handleArchivoChange(e) {
     setArchivo(e.target.files[0] || null)
@@ -45,6 +63,7 @@ function LimpiadorCSV() {
       const nombreSalida = archivo.name.replace('.csv', '_LIMPIO.csv')
 
       setResultado({ url, nombreSalida, filasOriginales, filasLimpias })
+      cargarHistorial()
     } catch {
       setError('No se pudo conectar con el servidor. ¿Está corriendo el backend?')
     } finally {
@@ -76,6 +95,7 @@ function LimpiadorCSV() {
           <p className="text-muted mb-4">
             Sube un archivo CSV y lo limpiamos: normaliza emails, elimina caracteres
             inválidos y reemplaza punto y coma por barra en otras columnas.
+            Acepta separador por coma (<code>,</code>) o punto y coma (<code>;</code>).
           </p>
 
           <form onSubmit={handleLimpiar}>
@@ -162,6 +182,55 @@ function LimpiadorCSV() {
 
         </div>
       </div>
+
+      {historial.length > 0 && (
+        <div className="row justify-content-center mt-5">
+          <div className="col-md-10 col-lg-8">
+            <div className="d-flex align-items-center gap-2 mb-3">
+              <i className="bi bi-clock-history fs-5" style={{ color: '#0D9488' }} aria-hidden="true"></i>
+              <h5 className="fw-semibold mb-0">Historial reciente</h5>
+              <span className="badge ms-1" style={{ backgroundColor: '#CCFBF1', color: '#134E4A' }}>
+                últimos 7 días
+              </span>
+            </div>
+            <div className="table-responsive rounded-3 border">
+              <table className="table table-hover mb-0 align-middle small">
+                <thead style={{ backgroundColor: '#F0FDFA' }}>
+                  <tr>
+                    <th className="ps-3">Archivo</th>
+                    <th className="text-center">Filas orig.</th>
+                    <th className="text-center">Filas limpias</th>
+                    <th className="text-center">Sep.</th>
+                    <th className="text-center">Encoding</th>
+                    <th className="text-end pe-3">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historial.map(r => (
+                    <tr key={r.id}>
+                      <td className="ps-3 text-truncate" style={{ maxWidth: 200 }} title={r.nombre_archivo}>
+                        <i className="bi bi-file-earmark-text me-1 text-muted" aria-hidden="true"></i>
+                        {r.nombre_archivo}
+                      </td>
+                      <td className="text-center">{r.filas_originales}</td>
+                      <td className="text-center">
+                        <span style={{ color: '#0D9488', fontWeight: 600 }}>{r.filas_limpias}</span>
+                      </td>
+                      <td className="text-center">
+                        <code>{r.separador === ',' ? 'coma' : 'punto y coma'}</code>
+                      </td>
+                      <td className="text-center">
+                        <span className="badge bg-secondary bg-opacity-25 text-secondary">{r.encoding}</span>
+                      </td>
+                      <td className="text-end pe-3 text-muted">{formatFecha(r.creado_en)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
