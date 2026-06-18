@@ -94,4 +94,18 @@ proyecto_toolkit-kawaii/
 | POST | `/api/csv/` | Recibe archivo `.csv`, devuelve CSV limpio como descarga |
 
 Para más detalle ver [spec.md](spec.md).
+
+## Despliegue (Dokploy)
+
+El proyecto se despliega como **un solo contenedor**: el `Dockerfile` en la raíz construye el frontend (Vite) y lo sirve desde Django (vía WhiteNoise) junto con la API.
+
+1. En Dokploy, crear una app de tipo **Dockerfile** apuntando a la raíz del repo.
+2. Configurar las variables de entorno (ver [.env.example](.env.example)):
+   - `SECRET_KEY`: clave secreta de Django (generar una nueva, no usar la de desarrollo)
+   - `DEBUG=False`
+   - `ALLOWED_HOSTS`: dominio asignado por Dokploy (sin `https://`)
+   - `CSRF_TRUSTED_ORIGINS`: `https://tu-dominio` (necesario para `/admin/`)
+3. El contenedor expone el puerto `8000` y corre `migrate` + `gunicorn` al iniciar.
+
+Nota: la base de datos SQLite vive dentro del contenedor — si solo se usa para `/admin/` y sesiones, no requiere volumen. Si se necesita persistencia, montar un volumen en `/app/db.sqlite3`.
 # toolkitkawai

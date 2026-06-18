@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 
-const API_URL = 'http://localhost:8000/api/csv/'
+const API_URL = '/api/csv/'
 const HISTORIAL_URL = 'http://localhost:8000/api/csv/historial/'
 
 function formatFecha(iso) {
