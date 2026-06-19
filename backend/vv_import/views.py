@@ -15,7 +15,7 @@ from .models import RegistroImportVV
 
 logger = logging.getLogger(__name__)
 
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 RETENTION_DAYS = 7
 
 

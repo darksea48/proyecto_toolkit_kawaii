@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # --- Constantes para la limpieza ---
 # Tamaño máximo de archivo aceptado (en bytes). Evita agotar la memoria.
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 # Mapa para normalizar caracteres comunes en los correos (tildes, ñ, coma->punto).
 EMAIL_NORMALIZATION_MAP = {
