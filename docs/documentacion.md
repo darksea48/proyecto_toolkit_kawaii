@@ -1,9 +1,9 @@
 # Documentación Completa — Toolkit Kawaii
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Fecha:** Junio 2026
-**Autor:** Douglas Suárez Zamorano
-**Contexto:** Proyecto personal desarrollado durante bootcamp Full Stack Python
+**Autor:** Douglas Suárez Zamorano y Joaquín González Cabello
+**Contexto:** Proyecto personal desarrollado para uso laboral-personal
 
 ---
 
@@ -58,6 +58,8 @@ El proyecto surge de una necesidad real: disponer de herramientas Python que se 
 | RF-08 | El sistema debe informar cuántas filas tenía el archivo original vs el procesado | Baja |
 | RF-09 | La interfaz debe mostrar un spinner durante operaciones asíncronas | Media |
 | RF-10 | La interfaz debe mostrar mensajes de error claros si algo falla | Alta |
+| RF-11 | El limpiador CSV debe aceptar tanto coma (`,`) como punto y coma (`;`) como separador, detectándolo automáticamente | Alta |
+| RF-12 | Cada limpieza CSV exitosa debe registrarse y el historial debe estar disponible durante 7 días antes de eliminarse | Media |
 
 ### 2.2 Requisitos no funcionales
 
@@ -69,13 +71,14 @@ El proyecto surge de una necesidad real: disponer de herramientas Python que se 
 | RNF-04 | El contraste de texto debe cumplir WCAG AA (mínimo 4.5:1) | Accesibilidad |
 | RNF-05 | Toda llamada a la API debe quedar registrada en un archivo de log | Trazabilidad |
 | RNF-06 | El proyecto debe poder instalarse en cualquier entorno Python 3.13+ con Node 22+ | Portabilidad |
+| RNF-07 | Los registros de historial de limpieza CSV deben eliminarse automáticamente después de 7 días | Retención de datos |
 
 ### 2.3 Restricciones
 
 - El proyecto corre en modo desarrollo (sin servidor de producción configurado aún)
 - No requiere autenticación de usuarios en la versión 1.0
 - Base de datos SQLite (no se usa para datos de herramientas, solo para sesiones/admin de Django)
-- Las herramientas no almacenan archivos ni resultados en el servidor
+- Los archivos CSV no se almacenan en el servidor; solo se guarda metadata del procesamiento (nombre, filas, separador) con retención de 7 días
 
 ---
 
@@ -110,16 +113,19 @@ Actor: Usuario
 Precondición: El frontend y backend están corriendo
 Flujo principal:
   1. El usuario navega a /csv
-  2. Selecciona un archivo .csv desde su disco
-  3. Hace clic en "Limpiar CSV"
-  4. El frontend envía POST /api/csv/ con el archivo como multipart/form-data
-  5. El backend procesa el archivo con pandas
-  6. El backend retorna el CSV limpio como descarga directa
-  7. El frontend muestra un recuadro de éxito con las filas procesadas
-  8. El usuario descarga el archivo o inicia una nueva limpieza
+  2. Al cargar la página, el frontend obtiene GET /api/csv/historial/ y muestra limpiezas recientes
+  3. El usuario selecciona un archivo .csv desde su disco
+  4. Hace clic en "Limpiar CSV"
+  5. El frontend envía POST /api/csv/ con el archivo como multipart/form-data
+  6. El backend detecta el encoding (UTF-8 o Latin-1) y el separador (coma o punto y coma)
+  7. El backend procesa el archivo con pandas y guarda un registro en la BD
+  8. Los registros con más de 7 días se eliminan automáticamente
+  9. El backend retorna el CSV limpio como descarga directa
+  10. El frontend muestra un recuadro de éxito con las filas procesadas y refresca el historial
+  11. El usuario descarga el archivo o inicia una nueva limpieza
 Flujo alternativo (error):
-  2a. El archivo no es .csv → el backend retorna 400 con mensaje de error
-  5a. Error de procesamiento → el backend retorna 500 con detalle del error
+  3a. El archivo no es .csv → el backend retorna 400 con mensaje de error
+  7a. Error de procesamiento → el backend retorna 500 con detalle del error
 ```
 
 ### 3.2 Diagrama de flujo de datos
@@ -135,9 +141,18 @@ Django API (puerto 8000)
   │
   ├── UsageLogMiddleware → logs/toolkit.log
   │
-  ├── POST /api/qr/  → qr_tool/views.py → qrcode → imagen base64 → JSON
+  ├── POST /api/qr/         → qr_tool/views.py → qrcode → imagen base64 → JSON
   │
-  └── POST /api/csv/ → csv_tool/views.py → pandas → CSV limpio → HttpResponse
+  ├── POST /api/csv/        → csv_tool/views.py
+  │                              ├── detectar encoding (UTF-8 / Latin-1)
+  │                              ├── detectar separador (, / ;)
+  │                              ├── pandas → CSV limpio → HttpResponse
+  │                              ├── RegistroLimpiezaCSV.objects.create()  ─┐
+  │                              └── purgar registros > 7 días              │
+  │                                                                          ▼
+  └── GET /api/csv/historial/ → csv_tool/views.py → RegistroLimpiezaCSV → JSON
+                                                           │
+                                                     db.sqlite3
 ```
 
 ---
@@ -200,12 +215,13 @@ proyecto_toolkit-kawaii/
 │   │   └── migrations/
 │   │
 │   └── csv_tool/               ← app Django: limpiador de CSV
-│       ├── views.py            ← lógica de la herramienta
-│       ├── urls.py             ← rutas de la app
-│       ├── models.py           ← vacío (no requiere BD)
-│       ├── admin.py
+│       ├── views.py            ← lógica: limpiar CSV, historial
+│       ├── urls.py             ← rutas: POST /, GET historial/
+│       ├── models.py           ← modelo RegistroLimpiezaCSV
+│       ├── admin.py            ← registro en panel admin
 │       ├── apps.py
 │       └── migrations/
+│           └── 0001_initial.py ← crea tabla RegistroLimpiezaCSV
 │
 └── frontend/                   ← aplicación React
     ├── index.html              ← entrada HTML, monta el elemento #root
@@ -387,6 +403,19 @@ Simplifica el flujo: React recibe la imagen en la misma respuesta que confirma e
 
 ### 6.5 `csv_tool/views.py` — Limpiador de CSV
 
+El módulo expone dos endpoints: `POST /api/csv/` para limpiar y `GET /api/csv/historial/` para consultar registros.
+
+#### `detectar_separador(contenido_bytes, encoding)`
+
+```python
+dialecto = csv.Sniffer().sniff(muestra, delimiters=',;')
+return dialecto.delimiter
+```
+
+`csv.Sniffer` es una clase del módulo estándar de Python que analiza una muestra del contenido del archivo e infiere qué carácter actúa como separador de columnas. Se pasa `delimiters=',;'` para restringirlo a los dos separadores más comunes. Si no puede determinar el separador (por ejemplo, un CSV de una sola columna sin separadores visibles), la función hace fallback a `;`.
+
+#### `limpiar_csv_view(request)` — POST
+
 ```python
 @api_view(['POST'])
 @parser_classes([MultiPartParser])
@@ -394,6 +423,21 @@ def limpiar_csv_view(request):
 ```
 
 El decorador `@parser_classes([MultiPartParser])` le dice a DRF que esta vista espera un formulario multipart (el formato que usan los `<input type="file">` de HTML). Sin esto, DRF intentaría parsear el body como JSON y fallaría.
+
+**Flujo de detección de encoding y separador:**
+
+```python
+try:
+    contenido.decode('utf-8')
+    encoding = 'utf-8'
+except UnicodeDecodeError:
+    encoding = 'latin-1'
+
+separador = detectar_separador(contenido, encoding)
+df = pd.read_csv(io.BytesIO(contenido), sep=separador, encoding=encoding, ...)
+```
+
+Se detecta el encoding primero (UTF-8 o Latin-1) antes de llamar al Sniffer, porque el Sniffer necesita decodificar los bytes para analizar el texto. Con el separador detectado se lee el CSV y también se usa para escribir el archivo de salida — de modo que un CSV con `,` sale con `,` y uno con `;` sale con `;`.
 
 **La función `limpiar_csv(df)`** recibe un DataFrame de pandas y aplica estas transformaciones en orden:
 
@@ -406,20 +450,26 @@ El decorador `@parser_classes([MultiPartParser])` le dice a DRF que esta vista e
 | 5 | Elimina `!#$%"` | Caracteres inválidos en direcciones de email |
 | 6 | `str.replace(r'\.+', '.')` | Normaliza `a..b@x.com` → `a.b@x.com` |
 | 7 | `.strip('._-><')` | Limpia el inicio y final del string |
-| 8 | Reemplaza `;` por `/` en otras columnas | Los CSV usan `;` como delimitador; si aparece dentro de un campo genera conflictos |
+| 8 | Reemplaza `;` por `/` en otras columnas | Si aparece dentro de un campo de datos puede confundir a parsers |
 | 9 | `df.map(lambda x: x.strip())` | Elimina espacios en blanco de toda la tabla |
 | 10 | `df.dropna(how='all')` | Elimina filas completamente vacías |
 
-**Manejo de encoding:**
+**Registro en base de datos y purga automática:**
 
 ```python
-try:
-    df = pd.read_csv(..., encoding='utf-8')
-except UnicodeDecodeError:
-    df = pd.read_csv(..., encoding='latin-1')
+RegistroLimpiezaCSV.objects.create(
+    nombre_archivo=archivo.name,
+    filas_originales=filas_originales,
+    filas_limpias=filas_limpias,
+    separador=separador,
+    encoding=encoding,
+)
+RegistroLimpiezaCSV.objects.filter(
+    creado_en__lt=timezone.now() - timedelta(days=RETENTION_DAYS)
+).delete()
 ```
 
-Los archivos CSV del mundo real frecuentemente usan Latin-1 (Windows-1252) en lugar de UTF-8, especialmente cuando vienen de Excel en español. Se intenta UTF-8 primero (más estándar) y se cae a Latin-1 si falla.
+Después de cada limpieza exitosa se guarda un registro de metadata en SQLite. Inmediatamente después se eliminan los registros con más de `RETENTION_DAYS` (7) días. Esta purga "perezosa" (lazy cleanup) se ejecuta solo cuando hay actividad — no requiere un proceso separado ni una tarea programada.
 
 **La respuesta:**
 
@@ -433,6 +483,34 @@ response['X-Filas-Limpias'] = filas_limpias
 - `Content-Disposition: attachment` hace que el navegador descargue el archivo en lugar de mostrarlo
 - `utf-8-sig` agrega un BOM (Byte Order Mark) al inicio del archivo — Excel lo necesita para detectar automáticamente que el archivo es UTF-8 y mostrar tildes y ñ correctamente
 - Los headers personalizados `X-Filas-*` pasan información adicional a React sin modificar el body
+
+#### `historial_csv_view(request)` — GET
+
+```python
+@api_view(['GET'])
+def historial_csv_view(request):
+    registros = RegistroLimpiezaCSV.objects.all()
+```
+
+Retorna en JSON todos los registros vigentes (los de más de 7 días ya fueron purgados por la vista POST). El frontend lo consulta al montar la página y después de cada limpieza exitosa.
+
+---
+
+### 6.6 `csv_tool/models.py` — Modelo de historial
+
+```python
+class RegistroLimpiezaCSV(models.Model):
+    nombre_archivo  = models.CharField(max_length=255)
+    filas_originales = models.IntegerField()
+    filas_limpias   = models.IntegerField()
+    separador       = models.CharField(max_length=1, default=';')
+    encoding        = models.CharField(max_length=20, default='utf-8')
+    creado_en       = models.DateTimeField(auto_now_add=True)
+```
+
+- `auto_now_add=True` en `creado_en` hace que Django asigne automáticamente la fecha y hora actuales al crear el registro; no se puede modificar después.
+- `Meta.ordering = ['-creado_en']` hace que las consultas sin `.order_by()` devuelvan los registros del más reciente al más antiguo por defecto.
+- El modelo no guarda el contenido del archivo, solo metadata — el archivo en sí nunca toca el disco del servidor.
 
 ---
 
@@ -544,6 +622,29 @@ Este patrón (crear un `<a>` temporal, asignarle `download` y hacer clic program
 
 ### 7.6 `pages/LimpiadorCSV.jsx` — Limpiador de CSV
 
+Maneja cinco estados con `useState`:
+
+| Estado | Tipo | Descripción |
+| --- | --- | --- |
+| `archivo` | File\|null | Archivo seleccionado por el usuario |
+| `cargando` | boolean | Controla el spinner y deshabilita el botón |
+| `resultado` | object\|null | URL de descarga, nombre y filas procesadas |
+| `error` | string\|null | Mensaje de error a mostrar |
+| `historial` | array | Registros de limpiezas de los últimos 7 días |
+
+**Carga inicial del historial con `useEffect`:**
+
+```javascript
+const cargarHistorial = useCallback(async () => {
+  const res = await fetch(HISTORIAL_URL)
+  if (res.ok) setHistorial(await res.json())
+}, [])
+
+useEffect(() => { cargarHistorial() }, [cargarHistorial])
+```
+
+`useEffect` con `[cargarHistorial]` como dependencia ejecuta la carga una sola vez al montar el componente. `useCallback` evita que `cargarHistorial` se recree en cada render, lo que dispararía el efecto indefinidamente. Después de cada limpieza exitosa también se llama a `cargarHistorial()` para refrescar la tabla.
+
 Usa `useRef` para el input de archivo, lo que permite resetear su valor programáticamente cuando el usuario hace clic en "Limpiar otro":
 
 ```javascript
@@ -565,6 +666,10 @@ const filasLimpias = res.headers.get('X-Filas-Limpias')
 ```
 
 Los headers de respuesta personalizados (`X-Filas-*`) se leen con `Response.headers.get()`. Esto permite que Django comunique metadatos del procesamiento sin modificar el cuerpo de la respuesta (que es el archivo CSV).
+
+**Tabla de historial:**
+
+La sección de historial solo se renderiza si `historial.length > 0` — no ocupa espacio visual cuando no hay registros. Cada fila muestra nombre del archivo, filas originales, filas limpias, separador detectado (en texto legible: "coma" o "punto y coma"), encoding, y fecha formateada con `toLocaleString('es-CL')`.
 
 ---
 
@@ -679,6 +784,37 @@ Access-Control-Expose-Headers: X-Filas-Originales, X-Filas-Limpias
 curl -X POST http://localhost:8000/api/csv/ \
   -F "archivo=@mi_base.csv" \
   --output mi_base_LIMPIO.csv
+```
+
+---
+
+### `GET /api/csv/historial/`
+
+Retorna los registros de limpiezas de los últimos 7 días.
+
+**Respuesta exitosa (200):**
+
+```json
+[
+  {
+    "id": 5,
+    "nombre_archivo": "base_encuestas.csv",
+    "filas_originales": 320,
+    "filas_limpias": 318,
+    "separador": ";",
+    "encoding": "latin-1",
+    "creado_en": "2026-06-19T14:30:00.123456+00:00"
+  },
+  ...
+]
+```
+
+Los registros se devuelven ordenados del más reciente al más antiguo. Los registros con más de 7 días se eliminan automáticamente en el siguiente `POST /api/csv/`.
+
+**Ejemplo con curl:**
+
+```bash
+curl http://localhost:8000/api/csv/historial/
 ```
 
 ---
@@ -905,6 +1041,37 @@ Tailwind es más flexible y moderno, pero requiere entender el sistema de utilid
 
 Los archivos CSV de trabajo real pueden tener miles de filas. Mostrarlos en pantalla sería inútil. El flujo más práctico para uso laboral es: subir → descargar limpio → usar en Excel.
 
+### ¿Por qué el historial usa SQLite y no un archivo de log?
+
+Alternativa evaluada: agregar un log en formato `.log` o `.jsonl` por cada limpieza CSV, similar a `toolkit.log`.
+
+Se eligió SQLite (modelo Django) porque:
+
+- Permite hacer consultas filtrando por fecha (`creado_en__lt`) sin parsear texto
+- La purga de 7 días se hace en una sola línea ORM en lugar de releer y reescribir un archivo
+- El panel de administración de Django (`/admin/`) muestra el historial de forma inmediata sin código adicional
+- Es la forma idiomática de persistencia en Django; añadir un modelo es el camino de menor fricción
+
+### ¿Por qué purgar el historial en cada POST en lugar de una tarea programada?
+
+Alternativa evaluada: usar una tarea programada (cron o Celery) que limpie registros viejos cada noche.
+
+Se eligió la purga "perezosa" (en el mismo request) porque:
+
+- Evita introducir Celery o cron en un proyecto que todavía no los necesita
+- El impacto en rendimiento es mínimo (un `DELETE` con índice en `creado_en`)
+- La consistencia es suficiente para el uso real: los registros se limpian la próxima vez que alguien use la herramienta
+
+### ¿Por qué auto-detectar el separador en lugar de pedírselo al usuario?
+
+Alternativa evaluada: un select en el formulario con opciones "coma" / "punto y coma".
+
+Se eligió auto-detección porque:
+
+- `csv.Sniffer` funciona de forma confiable para los dos separadores más comunes
+- Reduce fricción: el usuario no tiene que saber qué separador usa su archivo
+- El fallback a `;` cubre el caso edge donde el archivo tiene una sola columna
+
 ---
 
 ## 13. Glosario
@@ -923,3 +1090,7 @@ Los archivos CSV de trabajo real pueden tener miles de filas. Mostrarlos en pant
 | **UTF-8 BOM** | Variante de UTF-8 que incluye una marca al inicio del archivo para que programas como Excel detecten automáticamente el encoding |
 | **Vite** | Build tool moderno para proyectos JavaScript/React. Más rápido que Webpack o Create React App |
 | **Zero Trust** | Modelo de seguridad que no confía en ningún usuario por defecto, incluso si está dentro de la red. Requiere verificación explícita |
+| **csv.Sniffer** | Clase del módulo estándar de Python que analiza una muestra de texto CSV para inferir el separador y otras propiedades del dialecto |
+| **Lazy cleanup** | Estrategia de limpieza en la que los datos expirados se eliminan en el momento de la siguiente operación activa, en lugar de con un proceso separado |
+| **Retención de datos** | Política que define cuánto tiempo se conservan registros antes de eliminarlos. En este proyecto, 7 días para el historial CSV |
+| **BOM (Byte Order Mark)** | Secuencia de bytes al inicio de un archivo que indica el encoding. `utf-8-sig` lo incluye para compatibilidad con Excel |
