@@ -39,6 +39,12 @@ function Navbar() {
                 Limpiador CSV
               </NavLink>
             </li>
+            <li className="nav-item">
+              <NavLink className={({ isActive }) => `nav-link px-3 ${isActive ? 'active' : ''}`} to="/vv">
+                <i className="bi bi-arrow-repeat me-1" aria-hidden="true"></i>
+                Importador VV
+              </NavLink>
+            </li>
           </ul>
         </div>
       </div>

@@ -13,6 +13,12 @@ const herramientas = [
     icono: 'bi-file-earmark-spreadsheet',
     ruta: '/csv',
   },
+  {
+    titulo: 'Importador VV',
+    descripcion: 'Prepara un VVExport de LimeSurvey para reimportarlo sin dañar las tabulaciones.',
+    icono: 'bi-arrow-repeat',
+    ruta: '/vv',
+  },
 ]
 
 function Home() {

@@ -7,6 +7,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/qr/', include('qr_tool.urls')),
     path('api/csv/', include('csv_tool.urls')),
+    path('api/vv/', include('vv_import.urls')),
 ]
 
 # Sirve el SPA de React (frontend/dist/index.html) para cualquier ruta no-API,

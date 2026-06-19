@@ -3,6 +3,7 @@ import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import GeneradorQR from './pages/GeneradorQR'
 import LimpiadorCSV from './pages/LimpiadorCSV'
+import ImportadorVV from './pages/ImportadorVV'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/qr" element={<GeneradorQR />} />
           <Route path="/csv" element={<LimpiadorCSV />} />
+          <Route path="/vv" element={<ImportadorVV />} />
         </Routes>
       </main>
       <footer className="text-center py-3 mt-auto" style={{ backgroundColor: '#134E4A', color: '#ccfbf1' }}>
