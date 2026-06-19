@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     # local apps
     'qr_tool',
     'csv_tool',
+    'vv_import',
 ]
 
 MIDDLEWARE = [

@@ -6,8 +6,8 @@ Sitio web personal de herramientas de uso laboral. Cada herramienta es una utili
 
 | Herramienta | Descripción |
 | --- | --- |
-| Generador QR | Convierte texto o URL en código QR descargable como PNG |
-| Limpiador CSV | Normaliza emails, elimina caracteres inválidos y limpia archivos CSV |
+| Generador QR | Convierte texto o URL en código QR descargable como PNG con nombre personalizado |
+| Limpiador CSV | Normaliza emails, elimina caracteres inválidos; detecta separador `,` o `;` automáticamente; guarda historial de limpiezas por 7 días |
 
 ## Stack
 
@@ -92,6 +92,7 @@ proyecto_toolkit-kawaii/
 | --- | --- | --- |
 | POST | `/api/qr/` | Recibe `{"texto": "..."}`, devuelve imagen base64 |
 | POST | `/api/csv/` | Recibe archivo `.csv`, devuelve CSV limpio como descarga |
+| GET | `/api/csv/historial/` | Devuelve JSON con los últimos 7 días de limpiezas registradas |
 
 Para más detalle ver [spec.md](spec.md).
 
