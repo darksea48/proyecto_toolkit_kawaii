@@ -1,13 +1,19 @@
 import csv
 import io
 import logging
+from datetime import timedelta
 
 import pandas as pd
+from django.http import HttpResponse
+from django.utils import timezone
+from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
-from rest_framework import status
-from django.http import HttpResponse
+
+from .models import RegistroLimpiezaCSV
+
+RETENTION_DAYS = 7
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +138,7 @@ def limpiar_csv_view(request):
         contenido = archivo.read()
 
         # Decodificar una sola vez (UTF-8 con fallback a cp1252).
-        texto, _encoding = decodificar(contenido)
+        texto, encoding = decodificar(contenido)
 
         # Detectar separador (coma o punto y coma).
         separador = detectar_separador(texto)
@@ -147,6 +153,17 @@ def limpiar_csv_view(request):
         # Generar CSV limpio conservando el separador original.
         buffer = io.StringIO()
         df.to_csv(buffer, index=False, sep=separador)
+
+        RegistroLimpiezaCSV.objects.create(
+            nombre_archivo=archivo.name,
+            filas_originales=filas_originales,
+            filas_limpias=filas_limpias,
+            separador=separador,
+            encoding=encoding,
+        )
+        RegistroLimpiezaCSV.objects.filter(
+            creado_en__lt=timezone.now() - timedelta(days=RETENTION_DAYS)
+        ).delete()
 
         nombre_salida = archivo.name.rsplit('.csv', 1)[0] + '_LIMPIO.csv'
         # utf-8-sig agrega el BOM para que Excel reconozca tildes y eñes.
@@ -169,3 +186,21 @@ def limpiar_csv_view(request):
             {'error': 'Ocurrió un error al procesar el archivo.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(['GET'])
+def historial_csv_view(request):
+    registros = RegistroLimpiezaCSV.objects.all()
+    data = [
+        {
+            'id': r.id,
+            'nombre_archivo': r.nombre_archivo,
+            'filas_originales': r.filas_originales,
+            'filas_limpias': r.filas_limpias,
+            'separador': r.separador,
+            'encoding': r.encoding,
+            'creado_en': r.creado_en.isoformat(),
+        }
+        for r in registros
+    ]
+    return Response(data)
