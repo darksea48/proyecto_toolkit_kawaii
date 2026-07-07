@@ -1,6 +1,10 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, Link, useLocation } from 'react-router-dom'
 
 function Navbar() {
+  const { pathname } = useLocation()
+  const csvActivo = pathname.startsWith('/csv')
+  const vvActivo = pathname.startsWith('/vv')
+
   return (
     <nav className="navbar navbar-expand-lg navbar-toolkit">
       <div className="container-fluid">
@@ -33,17 +37,53 @@ function Navbar() {
                 Generador QR
               </NavLink>
             </li>
-            <li className="nav-item">
-              <NavLink className={({ isActive }) => `nav-link px-3 ${isActive ? 'active' : ''}`} to="/csv">
+            <li className="nav-item dropdown">
+              <button
+                className={`nav-link px-3 dropdown-toggle ${csvActivo ? 'active' : ''}`}
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
                 <i className="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>
                 Limpiador CSV
-              </NavLink>
+              </button>
+              <ul className="dropdown-menu dropdown-menu-end">
+                <li>
+                  <Link className="dropdown-item" to="/csv">
+                    <i className="bi bi-stars me-2" aria-hidden="true"></i>
+                    Limpiar archivo
+                  </Link>
+                </li>
+                <li>
+                  <Link className="dropdown-item" to="/csv/historial">
+                    <i className="bi bi-clock-history me-2" aria-hidden="true"></i>
+                    Historial de limpiezas
+                  </Link>
+                </li>
+              </ul>
             </li>
-            <li className="nav-item">
-              <NavLink className={({ isActive }) => `nav-link px-3 ${isActive ? 'active' : ''}`} to="/vv">
+            <li className="nav-item dropdown">
+              <button
+                className={`nav-link px-3 dropdown-toggle ${vvActivo ? 'active' : ''}`}
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
                 <i className="bi bi-arrow-repeat me-1" aria-hidden="true"></i>
                 Importador VV
-              </NavLink>
+              </button>
+              <ul className="dropdown-menu dropdown-menu-end">
+                <li>
+                  <Link className="dropdown-item" to="/vv">
+                    <i className="bi bi-stars me-2" aria-hidden="true"></i>
+                    Preparar archivo VV
+                  </Link>
+                </li>
+                <li>
+                  <Link className="dropdown-item" to="/vv/historial">
+                    <i className="bi bi-clock-history me-2" aria-hidden="true"></i>
+                    Historial de importaciones
+                  </Link>
+                </li>
+              </ul>
             </li>
           </ul>
         </div>
