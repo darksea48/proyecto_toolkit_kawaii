@@ -1,7 +1,7 @@
 # Documentación Completa — Toolkit Kawaii
 
-**Versión:** 1.1
-**Fecha:** Junio 2026
+**Versión:** 1.2
+**Fecha:** Julio 2026
 **Autor:** Douglas Suárez Zamorano y Joaquín González Cabello
 **Contexto:** Proyecto personal desarrollado para uso laboral-personal
 
@@ -60,6 +60,10 @@ El proyecto surge de una necesidad real: disponer de herramientas Python que se 
 | RF-10 | La interfaz debe mostrar mensajes de error claros si algo falla | Alta |
 | RF-11 | El limpiador CSV debe aceptar tanto coma (`,`) como punto y coma (`;`) como separador, detectándolo automáticamente | Alta |
 | RF-12 | Cada limpieza CSV exitosa debe registrarse y el historial debe estar disponible durante 7 días antes de eliminarse | Media |
+| RF-13 | El sistema debe permitir subir un archivo VVExport de LimeSurvey para prepararlo para reimportación | Alta |
+| RF-14 | El preparador VV debe eliminar el BOM, limpiar líneas vacías y validar estructura (dos cabeceras, columnas consistentes) | Alta |
+| RF-15 | Cada procesamiento VV exitoso debe registrarse con retención de 7 días, accesible desde una página de historial dedicada | Media |
+| RF-16 | El historial de CSV y VV debe estar en páginas propias, accesibles desde submenús desplegables en el navbar | Baja |
 
 ### 2.2 Requisitos no funcionales
 
@@ -71,14 +75,14 @@ El proyecto surge de una necesidad real: disponer de herramientas Python que se 
 | RNF-04 | El contraste de texto debe cumplir WCAG AA (mínimo 4.5:1) | Accesibilidad |
 | RNF-05 | Toda llamada a la API debe quedar registrada en un archivo de log | Trazabilidad |
 | RNF-06 | El proyecto debe poder instalarse en cualquier entorno Python 3.13+ con Node 22+ | Portabilidad |
-| RNF-07 | Los registros de historial de limpieza CSV deben eliminarse automáticamente después de 7 días | Retención de datos |
+| RNF-07 | Los registros de historial (CSV y VV) deben eliminarse automáticamente después de 7 días | Retención de datos |
 
 ### 2.3 Restricciones
 
 - El proyecto corre en modo desarrollo (sin servidor de producción configurado aún)
 - No requiere autenticación de usuarios en la versión 1.0
 - Base de datos SQLite (no se usa para datos de herramientas, solo para sesiones/admin de Django)
-- Los archivos CSV no se almacenan en el servidor; solo se guarda metadata del procesamiento (nombre, filas, separador) con retención de 7 días
+- Los archivos procesados (CSV y VV) no se almacenan en el servidor; solo se guarda metadata del procesamiento con retención de 7 días
 
 ---
 
@@ -112,20 +116,44 @@ Flujo alternativo (error):
 Actor: Usuario
 Precondición: El frontend y backend están corriendo
 Flujo principal:
-  1. El usuario navega a /csv
-  2. Al cargar la página, el frontend obtiene GET /api/csv/historial/ y muestra limpiezas recientes
-  3. El usuario selecciona un archivo .csv desde su disco
-  4. Hace clic en "Limpiar CSV"
-  5. El frontend envía POST /api/csv/ con el archivo como multipart/form-data
-  6. El backend detecta el encoding (UTF-8 o Latin-1) y el separador (coma o punto y coma)
-  7. El backend procesa el archivo con pandas y guarda un registro en la BD
-  8. Los registros con más de 7 días se eliminan automáticamente
-  9. El backend retorna el CSV limpio como descarga directa
-  10. El frontend muestra un recuadro de éxito con las filas procesadas y refresca el historial
-  11. El usuario descarga el archivo o inicia una nueva limpieza
+  1. El usuario navega a /csv (submenú "Limpiar archivo" del navbar)
+  2. Selecciona un archivo .csv desde su disco
+  3. Hace clic en "Limpiar CSV"
+  4. El frontend envía POST /api/csv/ con el archivo como multipart/form-data
+  5. El backend detecta el encoding (UTF-8 o cp1252) y el separador (coma o punto y coma)
+  6. El backend procesa el archivo con pandas y guarda un registro en la BD
+  7. Los registros con más de 7 días se eliminan automáticamente
+  8. El backend retorna el CSV limpio como descarga directa
+  9. El frontend muestra un recuadro de éxito con las filas procesadas
+  10. El usuario descarga el archivo o inicia una nueva limpieza
+Flujo alternativo — ver historial:
+  1. El usuario navega a /csv/historial (submenú "Historial de limpiezas")
+  2. El frontend obtiene GET /api/csv/historial/ y muestra la tabla de limpiezas recientes
 Flujo alternativo (error):
-  3a. El archivo no es .csv → el backend retorna 400 con mensaje de error
-  7a. Error de procesamiento → el backend retorna 500 con detalle del error
+  2a. El archivo no es .csv → el backend retorna 400 con mensaje de error
+  6a. Error de procesamiento → el backend retorna 500 con detalle del error
+```
+
+#### CU-03: Preparar archivo VVExport
+
+```
+Actor: Usuario
+Precondición: El frontend y backend están corriendo
+Flujo principal:
+  1. El usuario navega a /vv (submenú "Preparar archivo VV" del navbar)
+  2. Selecciona un archivo VVExport (.csv, .vv o .txt) desde su disco
+  3. Hace clic en "Preparar para importar"
+  4. El frontend envía POST /api/vv/ con el archivo como multipart/form-data
+  5. El backend elimina el BOM, limpia líneas vacías y valida estructura
+  6. El backend guarda un registro en la BD y purga registros > 7 días
+  7. El backend retorna el archivo procesado como descarga (.txt)
+  8. El frontend muestra un recuadro de éxito con advertencias de validación (si las hay)
+  9. El usuario descarga el archivo e lo importa en LimeSurvey
+Flujo alternativo — ver historial:
+  1. El usuario navega a /vv/historial (submenú "Historial de importaciones")
+  2. El frontend obtiene GET /api/vv/historial/ y muestra la tabla de archivos procesados
+Flujo alternativo (error):
+  5a. El archivo no tiene la estructura VV esperada → el backend retorna 400
 ```
 
 ### 3.2 Diagrama de flujo de datos
@@ -141,18 +169,25 @@ Django API (puerto 8000)
   │
   ├── UsageLogMiddleware → logs/toolkit.log
   │
-  ├── POST /api/qr/         → qr_tool/views.py → qrcode → imagen base64 → JSON
+  ├── POST /api/qr/          → qr_tool/views.py → qrcode → imagen base64 → JSON
   │
-  ├── POST /api/csv/        → csv_tool/views.py
-  │                              ├── detectar encoding (UTF-8 / Latin-1)
-  │                              ├── detectar separador (, / ;)
-  │                              ├── pandas → CSV limpio → HttpResponse
-  │                              ├── RegistroLimpiezaCSV.objects.create()  ─┐
-  │                              └── purgar registros > 7 días              │
+  ├── POST /api/csv/         → csv_tool/views.py
+  │                               ├── detectar encoding (UTF-8 / cp1252)
+  │                               ├── detectar separador (, / ;)
+  │                               ├── pandas → CSV limpio → HttpResponse
+  │                               ├── RegistroLimpiezaCSV.objects.create() ─┐
+  │                               └── purgar registros > 7 días             │
   │                                                                          ▼
-  └── GET /api/csv/historial/ → csv_tool/views.py → RegistroLimpiezaCSV → JSON
-                                                           │
-                                                     db.sqlite3
+  ├── GET /api/csv/historial/ → csv_tool/views.py → RegistroLimpiezaCSV → JSON
+  │                                                        │
+  ├── POST /api/vv/           → vv_import/views.py         │
+  │                               ├── eliminar BOM         │
+  │                               ├── limpiar líneas       ├── db.sqlite3
+  │                               ├── validar estructura   │
+  │                               ├── RegistroImportVV.objects.create()  ──┤
+  │                               └── purgar registros > 7 días            │
+  │                                                                         ▼
+  └── GET /api/vv/historial/  → vv_import/views.py → RegistroImportVV → JSON
 ```
 
 ---
@@ -214,14 +249,24 @@ proyecto_toolkit-kawaii/
 │   │   ├── apps.py
 │   │   └── migrations/
 │   │
-│   └── csv_tool/               ← app Django: limpiador de CSV
-│       ├── views.py            ← lógica: limpiar CSV, historial
+│   ├── csv_tool/               ← app Django: limpiador de CSV
+│   │   ├── views.py            ← lógica: limpiar CSV, historial
+│   │   ├── urls.py             ← rutas: POST /, GET historial/
+│   │   ├── models.py           ← modelo RegistroLimpiezaCSV
+│   │   ├── admin.py            ← registro en panel admin
+│   │   ├── apps.py
+│   │   └── migrations/
+│   │       └── 0001_initial.py ← crea tabla RegistroLimpiezaCSV
+│   │
+│   └── vv_import/              ← app Django: importador VVExport
+│       ├── views.py            ← lógica: preparar VV, historial
 │       ├── urls.py             ← rutas: POST /, GET historial/
-│       ├── models.py           ← modelo RegistroLimpiezaCSV
-│       ├── admin.py            ← registro en panel admin
+│       ├── models.py           ← modelo RegistroImportVV
+│       ├── limpiar_vv.py       ← lógica de limpieza/validación del archivo VV
+│       ├── admin.py
 │       ├── apps.py
 │       └── migrations/
-│           └── 0001_initial.py ← crea tabla RegistroLimpiezaCSV
+│           └── 0001_initial.py ← crea tabla RegistroImportVV
 │
 └── frontend/                   ← aplicación React
     ├── index.html              ← entrada HTML, monta el elemento #root
@@ -238,9 +283,12 @@ proyecto_toolkit-kawaii/
         │   └── Navbar.jsx      ← barra de navegación compartida
         │
         └── pages/
-            ├── Home.jsx        ← página de inicio con tarjetas de herramientas
-            ├── GeneradorQR.jsx ← página del generador de QR
-            └── LimpiadorCSV.jsx ← página del limpiador de CSV
+            ├── Home.jsx          ← página de inicio con tarjetas de herramientas
+            ├── GeneradorQR.jsx   ← generador de QR
+            ├── LimpiadorCSV.jsx  ← formulario de limpieza CSV
+            ├── HistorialCSV.jsx  ← historial de limpiezas CSV (últimos 7 días)
+            ├── ImportadorVV.jsx  ← formulario de preparación VVExport
+            └── HistorialVV.jsx   ← historial de archivos VV procesados (últimos 7 días)
 ```
 
 ---
@@ -547,6 +595,9 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/qr" element={<GeneradorQR />} />
           <Route path="/csv" element={<LimpiadorCSV />} />
+          <Route path="/csv/historial" element={<HistorialCSV />} />
+          <Route path="/vv" element={<ImportadorVV />} />
+          <Route path="/vv/historial" element={<HistorialVV />} />
         </Routes>
       </main>
       <footer>...</footer>
@@ -563,16 +614,27 @@ El layout usa Flexbox (`d-flex flex-column min-vh-100`) para que el footer siemp
 
 ### 7.3 `components/Navbar.jsx` — Barra de navegación
 
-Usa `NavLink` en lugar de `Link` porque `NavLink` agrega automáticamente la clase `active` al enlace de la ruta actual, lo que permite estilar visualmente cuál es la página activa:
+Las herramientas con subpáginas (Limpiador CSV e Importador VV) usan un **dropdown Bootstrap** en lugar de un `NavLink` directo. El estado activo del toggle se detecta con `useLocation`:
 
 ```jsx
-<NavLink
-  className={({ isActive }) => `nav-link px-3 ${isActive ? 'active' : ''}`}
-  to="/qr"
+const { pathname } = useLocation()
+const csvActivo = pathname.startsWith('/csv')
+
+<button
+  className={`nav-link px-3 dropdown-toggle ${csvActivo ? 'active' : ''}`}
+  data-bs-toggle="dropdown"
 >
+  Limpiador CSV
+</button>
+<ul className="dropdown-menu">
+  <li><Link to="/csv">Limpiar archivo</Link></li>
+  <li><Link to="/csv/historial">Historial de limpiezas</Link></li>
+</ul>
 ```
 
-El parámetro `isActive` es una función que React Router llama con `true` cuando la ruta coincide con la URL actual.
+`useLocation` devuelve el objeto de la URL actual. `pathname.startsWith('/csv')` marca el toggle como activo tanto en `/csv` como en `/csv/historial`. El mismo patrón se aplica al Importador VV con `/vv`.
+
+Los ítems de rutas simples (Inicio, Generador QR) siguen usando `NavLink`, que agrega la clase `active` automáticamente sin código extra.
 
 ---
 
@@ -620,9 +682,9 @@ Este patrón (crear un `<a>` temporal, asignarle `download` y hacer clic program
 
 ---
 
-### 7.6 `pages/LimpiadorCSV.jsx` — Limpiador de CSV
+### 7.6 `pages/LimpiadorCSV.jsx` — Formulario de limpieza CSV
 
-Maneja cinco estados con `useState`:
+Maneja cuatro estados con `useState` (el historial se movió a su propia página):
 
 | Estado | Tipo | Descripción |
 | --- | --- | --- |
@@ -630,20 +692,6 @@ Maneja cinco estados con `useState`:
 | `cargando` | boolean | Controla el spinner y deshabilita el botón |
 | `resultado` | object\|null | URL de descarga, nombre y filas procesadas |
 | `error` | string\|null | Mensaje de error a mostrar |
-| `historial` | array | Registros de limpiezas de los últimos 7 días |
-
-**Carga inicial del historial con `useEffect`:**
-
-```javascript
-const cargarHistorial = useCallback(async () => {
-  const res = await fetch(HISTORIAL_URL)
-  if (res.ok) setHistorial(await res.json())
-}, [])
-
-useEffect(() => { cargarHistorial() }, [cargarHistorial])
-```
-
-`useEffect` con `[cargarHistorial]` como dependencia ejecuta la carga una sola vez al montar el componente. `useCallback` evita que `cargarHistorial` se recree en cada render, lo que dispararía el efecto indefinidamente. Después de cada limpieza exitosa también se llama a `cargarHistorial()` para refrescar la tabla.
 
 Usa `useRef` para el input de archivo, lo que permite resetear su valor programáticamente cuando el usuario hace clic en "Limpiar otro":
 
@@ -665,15 +713,48 @@ const filasOriginales = res.headers.get('X-Filas-Originales')
 const filasLimpias = res.headers.get('X-Filas-Limpias')
 ```
 
-Los headers de respuesta personalizados (`X-Filas-*`) se leen con `Response.headers.get()`. Esto permite que Django comunique metadatos del procesamiento sin modificar el cuerpo de la respuesta (que es el archivo CSV).
-
-**Tabla de historial:**
-
-La sección de historial solo se renderiza si `historial.length > 0` — no ocupa espacio visual cuando no hay registros. Cada fila muestra nombre del archivo, filas originales, filas limpias, separador detectado (en texto legible: "coma" o "punto y coma"), encoding, y fecha formateada con `toLocaleString('es-CL')`.
+Los headers personalizados (`X-Filas-*`) permiten que Django comunique metadatos del procesamiento sin modificar el cuerpo de la respuesta (que es el archivo CSV).
 
 ---
 
-### 7.7 `index.css` — Sistema de diseño
+### 7.7 `pages/HistorialCSV.jsx` — Historial de limpiezas CSV
+
+Página independiente accesible desde el submenú del navbar. Carga el historial al montar con `useEffect` simple (sin `useCallback`, ya que no necesita actualizarse tras acciones del usuario):
+
+```javascript
+useEffect(() => {
+  async function cargar() {
+    const res = await fetch(HISTORIAL_URL)
+    if (!res.ok) throw new Error(...)
+    setHistorial(await res.json())
+  }
+  cargar()
+}, [])
+```
+
+Muestra tres estados visuales: spinner mientras carga, mensaje vacío si no hay registros, y tabla completa con número de fila, nombre del archivo, filas originales vs limpias (con delta), separador, encoding y fecha.
+
+---
+
+### 7.8 `pages/ImportadorVV.jsx` — Formulario de preparación VV
+
+Mismo patrón que `LimpiadorCSV.jsx`. Cuatro estados. La respuesta del backend incluye un header `X-Avisos` con advertencias de validación codificadas en URL-encoding:
+
+```javascript
+avisos = JSON.parse(decodeURIComponent(res.headers.get('X-Avisos') || '[]'))
+```
+
+Si hay avisos, se muestra un `alert-warning` con lista de advertencias. Si la validación pasó sin problemas, se muestra un mensaje de éxito verde.
+
+---
+
+### 7.9 `pages/HistorialVV.jsx` — Historial de importaciones VV
+
+Misma estructura que `HistorialCSV.jsx`. La tabla incluye nombre del archivo, número de respuestas y un badge de validación: verde "OK" si `valido === true`, o amarillo "N avisos" con el conteo.
+
+---
+
+### 7.10 `index.css` — Sistema de diseño
 
 El CSS global sobrescribe las variables CSS de Bootstrap usando la especificidad de `:root`:
 
@@ -815,6 +896,78 @@ Los registros se devuelven ordenados del más reciente al más antiguo. Los regi
 
 ```bash
 curl http://localhost:8000/api/csv/historial/
+```
+
+---
+
+### `POST /api/vv/`
+
+Prepara un archivo VVExport de LimeSurvey para reimportación.
+
+**Headers de petición:**
+
+```
+Content-Type: multipart/form-data
+```
+
+**Form fields:**
+
+| Campo | Tipo | Requerido | Descripción |
+| --- | --- | --- | --- |
+| `archivo` | file (.csv / .vv / .txt) | Sí | Archivo VVExport separado por tabulaciones |
+
+**Respuesta exitosa (200):**
+
+```
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: attachment; filename="archivo_VV_import.txt"
+X-Avisos: %5B%22aviso+1%22%5D   ← JSON codificado en URL (vacío si OK)
+```
+
+**Respuestas de error:**
+
+```json
+// 400 — sin archivo o formato incorrecto
+{ "error": "Debes subir un archivo válido." }
+
+// 500 — error de procesamiento
+{ "error": "Ocurrió un error al procesar el archivo." }
+```
+
+**Ejemplo con curl:**
+
+```bash
+curl -X POST http://localhost:8000/api/vv/ \
+  -F "archivo=@encuesta_vv.csv" \
+  --output encuesta_VV_import.txt
+```
+
+---
+
+### `GET /api/vv/historial/`
+
+Retorna los registros de archivos VV procesados en los últimos 7 días.
+
+**Respuesta exitosa (200):**
+
+```json
+[
+  {
+    "id": 3,
+    "nombre_archivo": "encuesta_202406.csv",
+    "respuestas": 145,
+    "n_avisos": 0,
+    "valido": true,
+    "creado_en": "2026-07-07T10:15:00.000000+00:00"
+  },
+  ...
+]
+```
+
+**Ejemplo con curl:**
+
+```bash
+curl http://localhost:8000/api/vv/historial/
 ```
 
 ---

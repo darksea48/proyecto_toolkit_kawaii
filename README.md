@@ -7,7 +7,8 @@ Sitio web personal de herramientas de uso laboral. Cada herramienta es una utili
 | Herramienta | Descripción |
 | --- | --- |
 | Generador QR | Convierte texto o URL en código QR descargable como PNG con nombre personalizado |
-| Limpiador CSV | Normaliza emails, elimina caracteres inválidos; detecta separador `,` o `;` automáticamente; guarda historial de limpiezas por 7 días |
+| Limpiador CSV | Normaliza emails, elimina caracteres inválidos; detecta separador `,` o `;` automáticamente; historial de limpiezas por 7 días |
+| Importador VV | Prepara archivos VVExport de LimeSurvey para reimportación: elimina BOM, limpia líneas vacías y valida estructura; historial por 7 días |
 
 ## Stack
 
@@ -68,21 +69,26 @@ Sitio disponible en `http://localhost:5173`
 ```text
 proyecto_toolkit-kawaii/
 ├── backend/
-│   ├── config/          ← configuración Django (settings, urls)
+│   ├── config/          ← configuración Django (settings, urls, middleware)
 │   ├── qr_tool/         ← app generador QR
-│   ├── csv_tool/        ← app limpiador CSV
-│   ├── db.sqlite3
+│   ├── csv_tool/        ← app limpiador CSV + historial
+│   ├── vv_import/       ← app importador VVExport + historial
+│   ├── logs/            ← toolkit.log (excluido del repo)
+│   ├── db.sqlite3       ← base de datos (excluida del repo)
 │   └── manage.py
 ├── frontend/
 │   ├── src/
-│   │   ├── components/  ← Navbar
-│   │   ├── pages/       ← Home, GeneradorQR, LimpiadorCSV
+│   │   ├── components/  ← Navbar (con dropdowns CSV y VV)
+│   │   ├── pages/       ← Home, GeneradorQR, LimpiadorCSV, HistorialCSV,
+│   │   │                   ImportadorVV, HistorialVV
 │   │   ├── App.jsx
 │   │   └── main.jsx
 │   └── vite.config.js
+├── docs/
+│   └── documentacion.md ← documentación técnica completa
 ├── venv/
 ├── requirements.txt
-├── spec.md              ← especificación técnica detallada
+├── spec.md              ← especificación técnica resumida
 └── README.md
 ```
 
@@ -92,7 +98,9 @@ proyecto_toolkit-kawaii/
 | --- | --- | --- |
 | POST | `/api/qr/` | Recibe `{"texto": "..."}`, devuelve imagen base64 |
 | POST | `/api/csv/` | Recibe archivo `.csv`, devuelve CSV limpio como descarga |
-| GET | `/api/csv/historial/` | Devuelve JSON con los últimos 7 días de limpiezas registradas |
+| GET | `/api/csv/historial/` | Últimos 7 días de limpiezas CSV registradas |
+| POST | `/api/vv/` | Recibe archivo VVExport, devuelve archivo preparado para importar |
+| GET | `/api/vv/historial/` | Últimos 7 días de archivos VV procesados |
 
 Para más detalle ver [spec.md](spec.md).
 
